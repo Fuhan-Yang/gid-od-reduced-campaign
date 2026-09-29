@@ -41,7 +41,7 @@ raw_sia %>%
         age.group == "0 to 5 years"
     ) %>%
     mutate(area.population = as.numeric(gsub(",", "", area.population))) %>%
-    mutate(vac_pop = 1e6) %>%
+    mutate(vac_pop = 1e6) %>% # fake vac population number
     select(
         activity.start.date, activity.end.date, vac_pop, place.admin.0, place.admin.1,
         area.population
@@ -73,7 +73,7 @@ lapply(1:length(countries), function(x) {
     ## counterfactual for this month ##
     case_vac <- case_this %>%
         left_join(vac_this, by = c("place.admin.0", "place.admin.1")) %>%
-        mutate(counter = estimate(case, vac_cov, VE = 0.8))
+        mutate(counter = estimate(case, vac_cov, VE = 0.8)) # fake VE
 
     case_vac
 }) -> counter_list
