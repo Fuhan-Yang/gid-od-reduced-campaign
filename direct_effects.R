@@ -143,7 +143,20 @@ case_map %>%
     facet_wrap(. ~ name, nrow = 2) +
     theme_minimal() +
     theme(
-        strip.text = element_text(size = 12),
-        legend.title = element_text(size = 11)
+        strip.text = element_text(size = 13),
+        legend.title = element_text(size = 13)
     )
-ggsave("")
+ggsave("Target vs Reduced.png", width = 10, height = 5)
+
+
+## Plot difference
+case_map %>%
+    ggplot() +
+    geom_sf(aes(fill = case_diff), color = "grey10", linewidth = 0.15) +
+    scale_fill_viridis_c(option = "A", na.value = "white") +
+    theme_minimal() +
+    theme(
+        strip.text = element_text(size = 13),
+        legend.title = element_text(size = 13)
+    )
+ggsave("Case Difference.png", width = 10, height = 3)
