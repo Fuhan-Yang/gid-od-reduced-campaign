@@ -11,6 +11,19 @@ countries <- c(
 ### Provinces
 
 
+## functions: estimate counterfactual ##
+estimate_counter <- function(case, vac, VE) {
+  counter <- case / (1 - (vac * VE))
+  return(counter)
+}
+
+estimate_obs <- function(counterfactual, vac, VE) {
+
+  case <- counterfactual*(1-(vac * VE))
+  return(case)
+}
+
+
 ### period of SIAs
 date_start <- as.Date("2025-11-01")
 date_end <- as.Date("2025-12-01")
@@ -47,14 +60,7 @@ raw_sia %>%
         area.population
     ) -> sel_sia
 
-## vaccine data: RI
-
-## estimate counterfactual ##
-estimate <- function(case, vac, VE) {
-    counter <- case / (1 - (vac * VE))
-    return(counter)
-}
-
+## estimate counterfactual for each province for each country
 lapply(1:length(countries), function(x) {
     case_this <- sel_case %>%
         filter(place.admin.0 == countries[x]) %>%
@@ -80,3 +86,9 @@ lapply(1:length(countries), function(x) {
 
 counter_df <- do.call(rbind, counter_list)
 counter_df
+
+## Given estimated counterfactual, estimate the cases given varied vaccine coverage
+
+
+
+
