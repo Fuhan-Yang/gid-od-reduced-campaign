@@ -83,6 +83,12 @@ counter_df <- sel_case %>%
 
 ## Given estimated counterfactual, estimate the cases given varied vaccine coverage
 scope <- read.csv("data/scope.csv")
+# for blank in target population, interpret as 0
+scope %>%
+    mutate(
+        target_population = if_else(is.na(target_population), 0, target_population),
+        reduced_population = if_else(is.na(reduced_population), 0, reduced_population)
+    ) -> scope
 
 counter_df %>%
     right_join( # only match the available regions in the scope
@@ -91,8 +97,6 @@ counter_df %>%
             mutate(place.admin.1 = toupper(place.admin.1)),
         by = c("place.admin.0", "place.admin.1")
     ) -> counter_df
-
-t <- counter_df %>% filter(!is.na(counter))
 
 ## VE needs to be a time-varying process, use a fixed number for now....
 counter_df %>%
@@ -106,3 +110,40 @@ counter_df %>%
         reduced_case = estimate_obs(counter, reduced_cov, fake_ve)
     ) %>%
     mutate(case_diff = reduced_case - target_case) -> counter_df
+
+## visualization
+# install.packages(c("sf", "rnaturalearth"))
+library(sf)
+library(rnaturalearth)
+
+province_map <- ne_states(
+    country = c("Nigeria", "Ethiopia"),
+    returnclass = "sf"
+)
+
+province_map %>%
+    rename(place.admin.1 = name, place.admin.0 = admin) %>%
+    mutate(place.admin.1 = toupper(place.admin.1), place.admin.0 = toupper(place.admin.0)) %>%
+    select(place.admin.0, place.admin.1, geometry) %>%
+    left_join(counter_df) -> case_map
+
+
+# Not obvious
+case_map %>%
+    tidyr::pivot_longer(
+        cols = c("target_case", "reduced_case"),
+        names_transform = list(name = ~ recode(.x,
+            "target_case" = "AFP cases under ideal scope",
+            "reduced_case" = "AFP cases under reduced scope"
+        ))
+    ) %>%
+    ggplot() +
+    geom_sf(aes(fill = value), color = "grey10", linewidth = 0.15) +
+    scale_fill_viridis_c(option = "A", na.value = "white") +
+    facet_wrap(. ~ name, nrow = 2) +
+    theme_minimal() +
+    theme(
+        strip.text = element_text(size = 12),
+        legend.title = element_text(size = 11)
+    )
+ggsave("")
