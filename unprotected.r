@@ -1,4 +1,4 @@
-# rm(list = ls())
+rm(list = ls())
 library(dplyr)
 library(ggplot2)
 ## Regions to analyze ##
