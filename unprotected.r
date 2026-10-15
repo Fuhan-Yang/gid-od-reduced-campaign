@@ -1,5 +1,8 @@
+rm(list = ls())
 library(dplyr)
 library(ggplot2)
+library(openxlsx)
+
 ## Regions to analyze ##
 ### countries
 countries <- c(
@@ -12,10 +15,13 @@ countries <- c(
 
 
 #### Import the data ###
-raw.data <- sirfunctions::get_all_polio_data(
-    size = "small", data_folder = "GID/PEB/SIR/Data",
-    polis_folder = "GID/PEB/SIR/POLIS"
-)
+# raw.data <- sirfunctions::get_all_polio_data(
+#     size = "small", data_folder = "GID/PEB/SIR/Data",
+#     polis_folder = "GID/PEB/SIR/POLIS"
+# )
+# save(raw.data, file = "raw.data.Rdata")
+
+load("raw.data.Rdata")
 
 ### params ###
 
@@ -48,7 +54,17 @@ datebreak_to_year_factor <- function(date, datebreak) {
     )
 }
 
-birthyears <- as.character(c(2022:2026)) # this are the years when the to-be-protect cohorts were born
+# the strategies will implement proportional to the n_0,1,2 children, get the proportion #
+calculate_protected <- function(p_missing, strategy_pop, prov_pop) {
+  (1-p_missing)^2*strategy_pop * strategy_pop/prov_pop
+}
+
+### unprotected to case ###
+s_to_c <- function(s, attack_rate, ci_r) {
+   s*attack_rate*ci_r
+}
+
+birthyears <- as.character(c(2022:2026)) # these are the years when the to-be-protect cohorts were born
 
 ### One should start with population data, and force for each admin2, the age group has to be 0-4.
 raw.data$dist.pop %>%
@@ -64,7 +80,9 @@ raw.data$dist.pop %>%
     # fix inconsistency between sia and pop data
     select("place.admin.0", "place.admin.1", "place.admin.2", "year", "u5pop") %>%
     filter(place.admin.0 %in% countries, year %in% birthyears) %>%
-    tidyr::complete(place.admin.2, year) -> dist_pop
+    tidyr::complete(place.admin.2, year) %>%
+    mutate(birth_pop = u5pop / 5) %>%
+    select(place.admin.0, place.admin.1, place.admin.2, year, birth_pop) -> dist_pop
 
 # dist_pop %>%
 # group_by(place.admin.2) %>%
@@ -79,122 +97,119 @@ prov_pop %>%
     filter(year == "2026") %>%
     select(place.admin.0, place.admin.1, u5pop, -year) -> prov_pop # use population data in 2026 to calculate costs for strategies
 
-
-### the admin 2 that miss population ###
-dist_pop %>%
-    filter(
-        place.admin.0 %in% sia_scope$place.admin.0,
-        place.admin.1 %in% sia_scope$place.admin.1,
-        place.admin.2 %in% sia_scope$place.admin.2,
-        year %in% sia_scope$year, # NOTE: minor bug here, the year in sia_scope is the interval of birthdays, not real year from dist_pop
-    ) %>%
-    left_join(sia_scope, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
-    select(-c(
-        "target_bOPV", "target_fIPV", "reduced_nOPV2", "target_nOPV2",
-        "reduced_bOPV", "reduced_fIPV"
-    )) %>%
-    # mutate(u5pop = case_when(place.admin.1 == "ADDIS ABABA" ~ ideal_population, .default = u5pop)) %>% # the pop data of this province is missing, substitute with target population data (equals to reduced_population)
-    mutate(birth_pop = u5pop / 5) -> sia_scope_pop
-
-## vaccine data: SIA
+##### SIA data from POLIS ###
 raw_sia <- raw.data$sia
 
-
 raw_sia %>%
-    filter(
-        place.admin.0 %in% countries,
-        activity.start.date >= date_start & activity.start.date < date_end,
-        age.group == "0 to 5 years",
-        vaccine.type == "nOPV2", # This is a place holder for different vaccine type
-        status == "Done"
-    ) %>%
-    mutate(
-        activity.start.date = as.Date(activity.start.date),
-        year = factor(findInterval(activity.start.date, cohort_birthdays),
-            levels = c(1:(length(cohort_birthdays) - 1)),
-            labels = format(cohort_birthdays[-1], "%Y")
-        )
-    ) %>%
-    select(
-        sia.code, place.admin.0, activity.start.date, place.admin.1, place.admin.2, year
-    ) %>%
-    distinct() %>%
-    group_by(place.admin.2, year) %>%
-    reframe(
-        place.admin.0 = place.admin.0[1],
-        place.admin.1 = place.admin.1[1],
-        n_sia_year = n_distinct(sia.code),
-    ) %>%
-    arrange(place.admin.0, place.admin.1, place.admin.2, year) %>%
-    group_by(place.admin.0, place.admin.1, place.admin.2) %>%
-    mutate(
-        n_sia = cumsum(n_sia_year),
-        age_at_strategies = 2026 - as.numeric(as.character(year))
-    ) -> sia_count # n_sia is the total rounds of SIA done in this admin2 since date_start
+  filter(
+    place.admin.0 %in% countries,
+    activity.start.date >= date_start & activity.start.date < date_end,
+    age.group == "0 to 5 years",
+    vaccine.type == "nOPV2", # This is a place holder for different vaccine type
+    status == "Done"
+  ) %>%
+  mutate(
+    activity.start.date = as.Date(activity.start.date),
+    year = datebreak_to_year_factor(activity.start.date, cohort_birthdays)
+  ) %>%
+  mutate(place.admin.2 = case_when(place.admin.2 == "WAG HAMRA" ~ "WAGHIMERA", # keep the name consistent between scope, sia, and population data
+                                   .default = place.admin.2)) %>%
+  select(
+    sia.code, place.admin.0, activity.start.date, place.admin.1, place.admin.2, year
+  ) %>%
+  distinct() %>%
+  group_by(place.admin.2, year) %>%
+  reframe(
+    place.admin.0 = place.admin.0[1],
+    place.admin.1 = place.admin.1[1],
+    n_sia_per_year = n_distinct(sia.code),
+  ) -> sia_count
 
 
-### population data in scope
+###### scope data from strategies ###
 scope <- read.csv("data/scope.csv")
-# for blank in target population, interpret as 0
 
 ## the admin 1 that are 0 in both strategies will be removed from the analysis ##
 admin1_no_data <- scope %>%
-    filter(is.na(target_population) & is.na(reduced_population))
+  filter(is.na(target_population) & is.na(reduced_population))
 
 scope %>%
-    anti_join(admin1_no_data) %>%
-    mutate(
-        place.admin.1 = toupper(state),
-        ideal_population = if_else(is.na(target_population), 0, target_population),
-        reduced_population = if_else(is.na(reduced_population), 0, reduced_population)
-    ) %>%
-    rename(place.admin.0 = country) %>%
-    select(-state, -target_population) %>%
-    left_join(sia_count, by = c("place.admin.0", "place.admin.1")) %>%
-    mutate(place.admin.2 = case_when(place.admin.2 == "WAG HAMRA" ~ "WAGHIMERA", # keep the name consistent between scope, sia, and population data
-        .default = place.admin.2
-    )) -> sia_scope
+  # anti_join(admin1_no_data) %>%
+  mutate(
+    place.admin.1 = toupper(state),
+    ideal_population = if_else(is.na(target_population), 0, target_population), # for blank in target population, interpret as 0
+    reduced_population = if_else(is.na(reduced_population), 0, reduced_population)
+  ) %>%
+  rename(place.admin.0 = country) %>%
+  select(place.admin.0, place.admin.1, ideal_population, reduced_population) -> scope
 
 
-### combine with population data
-dist_pop <- raw.data$dist.pop
-
+#### Join SIA data with dist pop data to calculate unprotected before strategies ###
 dist_pop %>%
-    rename(place.admin.0 = ctry, place.admin.1 = prov, place.admin.2 = dist) %>%
-    mutate(year = as.character(year)) %>%
-    mutate(place.admin.2 = case_when(
-        place.admin.2 == "MAYO BELWA" ~ "MAYO-BELWA",
-        place.admin.2 == "TAFAWA BALEWA" ~ "TAFAWA-BALEWA",
-        place.admin.2 == "DANGE SHUNI" ~ "DANGE-SHUNI",
-        place.admin.2 == "WAG HAMRA" ~ "WAGHIMERA",
-        .default = place.admin.2
-    )) %>%
-    # fix inconsistency between sia and pop data
-    select("place.admin.0", "place.admin.1", "place.admin.2", "year", "u5pop") -> dist_pop
+  left_join(sia_count, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
+# there are NA after joining, carefully impute them #
+  mutate(n_sia_per_year = if_else(is.na(n_sia_per_year), 0, n_sia_per_year),
+         age_at_strategies = 2026 - as.numeric(as.character(year))) %>% # if NA here, meaning no SIA in this year
+  arrange(place.admin.0, place.admin.1, place.admin.2, age_at_strategies) %>% # redo calculation
+  group_by(place.admin.0, place.admin.1, place.admin.2) %>%
+  mutate(n_sia_experienced = cumsum(n_sia_per_year)) -> sia_pop
 
-prov_pop <- raw.data$prov.pop
+#### calculate the unprotected children number before strategies ####
+sia_pop %>%
+  mutate(n_0_dose_pre = birth_pop * get_p_unprotected(0, n_sia_experienced, p_missing = p_missing),
+         n_1_dose_pre = birth_pop * get_p_unprotected(1, n_sia_experienced, p_missing = p_missing),
+         n_2_dose_pre = birth_pop * get_p_unprotected(2, n_sia_experienced, p_missing = p_missing)) %>%
+  mutate(unprotected_pre = n_0_dose_pre + n_1_dose_pre + n_2_dose_pre) %>%
+  group_by(place.admin.0, place.admin.1) %>%
+  mutate(all_unprotected_prov_pre = sum(unprotected_pre),
+         all_0_dose_prov_pre = sum(n_0_dose_pre),
+         all_other_dose_prov_pre = sum(n_1_dose_pre) + sum(n_2_dose_pre)) -> sia_pop_unpro
 
-prov_pop %>%
-    rename(place.admin.0 = ctry, place.admin.1 = prov) %>%
-    mutate(year = as.character(year)) %>%
-    filter(year == "2026") %>%
-    select(place.admin.0, place.admin.1, u5pop, -year) -> prov_pop # use population data in 2026 to calculate costs for strategies
+#### Join with scope data to calculate unprotected after strategies ####
+sia_pop_unpro %>%
+  right_join(scope, by = c("place.admin.0", "place.admin.1")) %>%
+  left_join(prov_pop, by = c("place.admin.0", "place.admin.1")) -> sia_pop_scope_prov
 
-### the admin 2 that miss population ###
-dist_pop %>%
-    filter(
-        place.admin.0 %in% sia_scope$place.admin.0,
-        place.admin.1 %in% sia_scope$place.admin.1,
-        place.admin.2 %in% sia_scope$place.admin.2,
-        year %in% sia_scope$year, # NOTE: minor bug here, the year in sia_scope is the interval of birthdays, not real year from dist_pop
-    ) %>%
-    left_join(sia_scope, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
-    select(-c(
-        "target_bOPV", "target_fIPV", "reduced_nOPV2", "target_nOPV2",
-        "reduced_bOPV", "reduced_fIPV"
-    )) %>%
-    # mutate(u5pop = case_when(place.admin.1 == "ADDIS ABABA" ~ ideal_population, .default = u5pop)) %>% # the pop data of this province is missing, substitute with target population data (equals to reduced_population)
-    mutate(birth_pop = u5pop / 5) -> sia_scope_pop # assume pop per age-year is the same under
+#### calculate how many remained unprotected after ideal and reduced scope ####
+# remained = all_unprotected - (1-p_missing)^2 * ideal(reduced) * ideal(reduced)/u5_pop
+sia_pop_scope_prov %>%
+  mutate(unprotected_ideal_post = if_else(all_unprotected_prov_pre - calculate_protected(p_missing, ideal_population, u5pop) < 0, 0,
+                                         all_unprotected_prov_pre - calculate_protected(p_missing, ideal_population, u5pop)),
+         unprotected_reduced_post = if_else(all_unprotected_prov_pre - calculate_protected(p_missing, reduced_population, u5pop) < 0, 0,
+                                            all_unprotected_prov_pre - calculate_protected(p_missing, reduced_population, u5pop))) %>%
+  mutate(partially_protected_ideal_post = case_when(unprotected_ideal_post > 0 ~ calculate_protected(p_missing, ideal_population, u5pop) * all_0_dose_prov_pre/(all_0_dose_prov_pre + all_other_dose_prov_pre),
+                                                    .default = all_0_dose_prov_pre),
+         partially_protected_reduced_post = case_when(unprotected_reduced_post > 0 ~ calculate_protected(p_missing, reduced_population, u5pop) * all_0_dose_prov_pre/(all_0_dose_prov_pre + all_other_dose_prov_pre),
+                                                      .default = all_0_dose_prov_pre),
+         fully_protected_ideal_post = case_when(unprotected_ideal_post > 0 ~ calculate_protected(p_missing, ideal_population, u5pop) * all_other_dose_prov_pre/(all_0_dose_prov_pre + all_other_dose_prov_pre),
+                                               .default = all_other_dose_prov_pre),
+         fully_protected_reduced_post = case_when(unprotected_reduced_post > 0 ~ calculate_protected(p_missing, reduced_population, u5pop) * all_other_dose_prov_pre/(all_0_dose_prov_pre + all_other_dose_prov_pre),
+                                                  .default = all_other_dose_prov_pre)) %>%
+  mutate(case_ideal_post = s_to_c(unprotected_ideal_post, attack_rate, ci_r),
+         case_reduced_post = s_to_c(unprotected_reduced_post, attack_rate, ci_r),
+         case_partially_protected_ideal_post = s_to_c(partially_protected_ideal_post, attack_rate,ci_r),
+         case_partially_protected_reduced_post = s_to_c(partially_protected_reduced_post, attack_rate, ci_r)) %>%
+  mutate(case_diff = case_reduced_post - case_ideal_post,
+         case_diff_partially_protected = case_partially_protected_reduced_post - case_partially_protected_ideal_post) -> sia_pop_scope_prov_post_full
+
+write.xlsx(sia_pop_scope_prov_post_full,file = "strategies_full.xlsx", rowNames = F)
+
+
+sia_pop_scope_prov_post_full %>%
+  distinct(place.admin.1,.keep_all = T) %>%
+  select(place.admin.0, place.admin.1, all_unprotected_prov_pre, all_0_dose_prov_pre,
+         all_other_dose_prov_pre, ideal_population, reduced_population, unprotected_ideal_post,
+         unprotected_reduced_post, partially_protected_ideal_post, partially_protected_reduced_post,
+         fully_protected_ideal_post, fully_protected_reduced_post,
+         case_ideal_post, case_reduced_post,
+         case_partially_protected_ideal_post, case_partially_protected_reduced_post,
+         case_diff, case_diff_partially_protected, u5pop) -> sia_pop_scope_prov_post
+
+write.xlsx(sia_pop_scope_prov_post, file = "strategies.xlsx", rowNames = F)
+
+### If to estimate how many are partially protected vs how many are fully protected:
+
+
 
 
 ### fix sia_scope_pop: the NA is the rows that don't have data in sia, meaning no sia at all ###
@@ -206,173 +221,93 @@ dist_pop %>%
 # # summarise(n_unique = n_distinct(ideal_population)) %>%
 # filter(n_unique > 1)
 
-
-sia_scope_pop %>%
-    select(-ideal_population, -reduced_population) %>%
-    left_join(sia_scope_pop %>%
-        filter(!is.na(ideal_population), !is.na(reduced_population)) %>% # replace NA to be admin1-specific ideal and reduced pop
-        distinct(place.admin.1, ideal_population, reduced_population), by = "place.admin.1") %>%
-    mutate(n_sia_year = if_else(is.na(n_sia_year), 0, n_sia_year)) %>% # impute NA with 0
-    arrange(place.admin.0, place.admin.1, place.admin.2, desc(year)) %>%
-    group_by(place.admin.0, place.admin.1, place.admin.2) %>%
-    mutate(
-        n_sia = cumsum(n_sia_year),
-        age_at_strategies = 2026 - as.numeric(as.character(year))
-    ) %>%
-    rename(birthyear = year) -> sia_scope_pop # NOTE: year is ambiguous
-
-
-### get unprotected children ####
-sia_scope_pop %>%
-    mutate(
-        p_missing = p_missing,
-    ) %>%
-    mutate(
-        n_dose_0_pre = birth_pop * get_p_unprotected(n = 0, n_sia_cumu = n_sia, p_missing = p_missing),
-        n_dose_1_pre = birth_pop * get_p_unprotected(n = 1, n_sia_cumu = n_sia, p_missing = p_missing),
-        n_dose_2_pre = birth_pop * get_p_unprotected(n = 2, n_sia_cumu = n_sia, p_missing = p_missing),
-    ) %>%
-    group_by(place.admin.1) %>% # aggregate unprotected across age groups and admin 2
-    mutate(
-        all_dose_0_pre = sum(n_dose_0_pre, na.rm = TRUE),
-        all_dose_1_pre = sum(n_dose_1_pre, na.rm = TRUE),
-        all_dose_2_pre = sum(n_dose_2_pre, na.rm = TRUE)
-    ) %>%
-    mutate(all_unprotected_pre = all_dose_0_pre + all_dose_1_pre + all_dose_2_pre) %>%
-    select(-u5pop) %>%
-    ungroup() %>%
-    distinct() -> scope_unprotected
-
-scope_unprotected %>%
-    left_join(prov_pop %>% rename(u5pop_prov = u5pop), by = c("place.admin.0", "place.admin.1")) -> scope_unprotected_prov_pop
-
-# NOTE: population is smaller than target population in some admin1 regions!
-print(scope_unprotected_prov_pop %>%
-    filter(ideal_population > u5pop_prov) %>%
-    distinct(place.admin.0, place.admin.1), n = Inf, width = Inf)
-
-bad_pop_prov_names <- scope_unprotected_prov_pop %>%
-    filter(ideal_population > u5pop_prov) %>%
-    distinct(place.admin.0, place.admin.1)
-
-# Replace the population with the ideal_population for these admin1 regions
-scope_unprotected_prov_pop %>%
-    mutate(u5pop_prov = case_when(place.admin.1 %in% bad_pop_prov_names$place.admin.1 ~ ideal_population, .default = u5pop_prov)) %>%
-    mutate(
-        all_unprotected_post_ideal = all_unprotected_pre - (1 - p_missing)^2 * ideal_population * ideal_population / u5pop_prov,
-        all_unprotected_post_reduced = all_unprotected_pre - (1 - p_missing)^2 * reduced_population * reduced_population / u5pop_prov,
-    ) %>%
-    mutate(
-        all_unprotected_post_ideal = if_else(all_unprotected_post_ideal < 0, 0, all_unprotected_post_ideal),
-        all_unprotected_post_reduced = if_else(all_unprotected_post_reduced < 0, 0, all_unprotected_post_reduced)
-    ) %>%
-    mutate(
-        case_final_ideal = all_unprotected_post_ideal * attack_rate * ci_r,
-        case_final_reduced = all_unprotected_post_reduced * attack_rate * ci_r
-    ) -> scope_final_case
-
-scope_final_case %>%
-    select(
-        place.admin.0, place.admin.1, place.admin.2, n_sia, age_at_strategies, ideal_population, reduced_population, birth_pop, n_dose_0_pre, n_dose_1_pre, n_dose_2_pre,
-        all_dose_0_pre, all_dose_1_pre, all_dose_2_pre, all_unprotected_pre, all_unprotected_post_ideal, all_unprotected_post_reduced,
-        case_final_ideal, case_final_reduced
-    ) -> final_unprotected
-
-write.csv(final_unprotected, file = "unprotected.csv", row.names = FALSE)
-
-
 ##### Visualization
-scope_final_case %>%
-    rename(`Ideal Scope` = "case_final_ideal", `Reduced Scope` = "case_final_reduced") %>%
-    tidyr::pivot_longer((cols <- c("Ideal Scope", "Reduced Scope")), names_to = "Scenario", values_to = "case") %>%
+sia_pop_scope_prov_post %>%
+    rename(`Unprotected Before Strategies` = "all_unprotected_prov_pre",
+           `Ideal Scope` = "ideal_population",
+           `Reduced Scope` = "reduced_population") %>%
+    tidyr::pivot_longer((cols <- c("Unprotected Before Strategies","Ideal Scope", "Reduced Scope")),
+                        names_to = "Strategies", values_to = "number") %>%
     ggplot() +
-    geom_col(aes(x = place.admin.1, y = case, fill = Scenario), position = "dodge") +
+    geom_col(aes(x = place.admin.1, y = number, fill = Strategies), position = "dodge") +
     facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
-    xlab("Number of AFP Cases that would happened") +
-    ylab("Province") +
+    xlab("State") +
+    ylab("Number of Population") +
+    labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
     coord_flip() +
     theme_bw() +
     theme(legend.position = "bottom")
-ggsave("Histogram of cases.png", width = 10, height = 8)
+ggsave("Histogram of strategies.png", width = 10, height = 8)
 
 
-final_unprotected %>%
-    ggplot() +
-    geom_col(aes(x = place.admin.1, y = case_diff_partially)) +
-    facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
-    xlab("Difference between the number of AFP cases that would happen for partially-protected children") +
-    ylab("Province") +
-    coord_flip() +
-    theme_bw() +
-    theme(legend.position = "bottom")
-ggsave("Histogram of case_diff.png", width = 10, height = 8)
+sia_pop_scope_prov_post %>%
+  rename(
+         `Ideal Scope` = "fully_protected_ideal_post",
+         `Reduced Scope` = "fully_protected_reduced_post") %>%
+  tidyr::pivot_longer((cols <- c("Ideal Scope", "Reduced Scope")),
+                      names_to = "Strategies", values_to = "number") %>%
+  ggplot() +
+  geom_col(aes(x = place.admin.1, y = number, fill = Strategies), position = "dodge") +
+  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
+  xlab("State") +
+  ylab("Number of population that are fully protected after strategies") +
+  labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "bottom")
+ggsave("Histogram of fully_protected.png", width = 10, height = 8)
 
 
-scope_final_case %>%
-    filter(place.admin.1 == "ADDIS ABABA") -> t
-
-# check if p_unprotected is unique for each year, age_group, place.admin.2
-
-# ### map: need to use district map as covered area are all covered. So province map lost granularity.
-# library(sf)
-# library(rnaturalearth)
-
-# province_map <- ne_states(
-#     country = c("Nigeria"),
-#     returnclass = "sf"
-# )
-
-# province_map %>%
-#     rename(place.admin.1 = name, place.admin.0 = admin) %>%
-#     mutate(place.admin.1 = toupper(place.admin.1), place.admin.0 = toupper(place.admin.0)) %>%
-#     select(place.admin.0, place.admin.1, geometry) %>%
-#     left_join(sia_scope_pop_unprotected) -> case_map
-
-# # Not obvious
-# case_map %>%
-#     tidyr::pivot_longer(
-#         cols = c("final_case_ideal", "final_case_reduced"),
-#         names_transform = list(name = ~ recode(.x,
-#             "final_case_ideal" = "AFP infections under ideal scope",
-#             "final_case_reduced" = "AFP infections under reduced scope"
-#         ))
-#     ) %>%
-#     mutate(value = cut(value, breaks = 10)) %>%
-#     ggplot() +
-#     geom_sf(aes(fill = value), color = "grey10", linewidth = 0.15) +
-#     scale_fill_viridis_d(option = "A", na.value = "white") +
-#     facet_wrap(. ~ name, nrow = 2) +
-#     theme_minimal() +
-#     theme(
-#         strip.text = element_text(size = 13),
-#         # legend.position = "none",
-#         legend.title = element_text(size = 13),
-#     )
-# ggsave("Target vs Reduced_d.png", width = 10, height = 5)
+sia_pop_scope_prov_post %>%
+  rename(
+    `Ideal Scope` = "partially_protected_ideal_post",
+    `Reduced Scope` = "partially_protected_reduced_post") %>%
+  tidyr::pivot_longer((cols <- c("Ideal Scope", "Reduced Scope")),
+                      names_to = "Strategies", values_to = "number") %>%
+  ggplot() +
+  geom_col(aes(x = place.admin.1, y = number, fill = Strategies), position = "dodge") +
+  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
+  xlab("State") +
+  ylab("Number of population that are partially protected after strategies") +
+  labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "bottom")
+ggsave("Histogram of partially_protected.png", width = 10, height = 8)
 
 
-# ## Plot difference
-# case_map %>%
-#     mutate(infec_diff = cut(infec_diff, breaks = 10)) %>%
-#     ggplot() +
-#     geom_sf(aes(fill = infec_diff), color = "grey10", linewidth = 0.15) +
-#     scale_fill_viridis_d(option = "A", na.value = "white") +
-#     theme_minimal() +
-#     theme(
-#         strip.text = element_text(size = 13),
-#         # legend.position = "none",
-#         legend.title = element_text(size = 13)
-#     )
-# ggsave("Case Difference_d.png", width = 10, height = 3)
+sia_pop_scope_prov_post %>%
+  rename(
+    `Ideal Scope` = "case_ideal_post",
+    `Reduced Scope` = "case_reduced_post") %>%
+  tidyr::pivot_longer((cols <- c("Ideal Scope", "Reduced Scope")),
+                      names_to = "Strategies", values_to = "number") %>%
+  ggplot() +
+  geom_col(aes(x = place.admin.1, y = number, fill = Strategies), position = "dodge") +
+  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
+  xlab("State") +
+  ylab("Number of AFP cases that could have after strategies") +
+  labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "bottom")
+ggsave("Histogram of case.png", width = 10, height = 8)
 
 
-# put a baseline: pop <= 3 rounds
-# pop have 0, 1, 2, doses exactly before strategies as all separate columns
-# final unprotected for 0 doses and >=1 doses after strategies for A and B.
-# then calculate the difference of final unprotected for 0 between two strategies.
+sia_pop_scope_prov_post %>%
+  rename(
+    `Ideal Scope` = "case_partially_protected_ideal_post",
+    `Reduced Scope` = "case_partially_protected_reduced_post") %>%
+  tidyr::pivot_longer((cols <- c("Ideal Scope", "Reduced Scope")),
+                      names_to = "Strategies", values_to = "number") %>%
+  ggplot() +
+  geom_col(aes(x = place.admin.1, y = number, fill = Strategies), position = "dodge") +
+  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
+  xlab("State") +
+  ylab("Number of AFP cases that could have from the partially-protected children") +
+  labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "bottom")
+ggsave("Histogram of partially-protected case.png", width = 10, height = 8)
 
-
-# u5 pop at beginning,
-
-## 2 rounds
-###
