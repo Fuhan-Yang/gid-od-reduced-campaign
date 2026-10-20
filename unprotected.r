@@ -64,6 +64,40 @@ s_to_c <- function(s, attack_rate, ci_r) {
    s*attack_rate*ci_r
 }
 
+### extrapolate the missing population data: same for the next year ###
+pop_ext <- function(pop, year, max_gap = 1) {
+# order by year within the group
+  ord <- order(year)
+  pop_ord <- pop[ord]
+  year_ord <- year[ord]
+
+  filled <- pop_ord
+  na_idx <- which(is.na(pop_ord))
+
+  for (i in na_idx) {
+    y <- year_ord[i]
+
+    # look for the nearest non-NA value within max_gap years before/after
+    candidates <- which(!is.na(pop_ord) & abs(year_ord - y) <= max_gap)
+
+    if (length(candidates) > 0) {
+      # pick the closest year; if tie (one before, one after), prefer the earlier year
+      dists <- abs(year_ord[candidates] - y)
+      best <- candidates[which.min(dists)]
+      filled[i] <- pop_ord[best]
+    }
+    # else leave as NA (gap too large to safely extrapolate)
+  }
+
+  # return in original row order
+  filled[order(ord)]
+}
+
+### Given place.admin.2, backfill the missing admin.0 and admin.1
+place_ext <- function(place.admin.2) {
+
+}
+
 birthyears <- as.character(c(2022:2026)) # these are the years when the to-be-protect cohorts were born
 
 ### One should start with population data, and force for each admin2, the age group has to be 0-4.
@@ -84,10 +118,31 @@ raw.data$dist.pop %>%
     mutate(birth_pop = u5pop / 5) %>%
     select(place.admin.0, place.admin.1, place.admin.2, year, birth_pop) -> dist_pop
 
-# dist_pop %>%
-# group_by(place.admin.2) %>%
-# summarise(n_unique = n_distinct(year)) %>%
-# distinct(n_unique)
+
+### There are missing data for admin.0, admin.1 and pop when pop is not available in certain years. Impute them
+#### Impute admin.0 and admin.1 ####
+# admins <- dist_pop %>% distinct(place.admin.2, .keep_all = T) %>%
+#   select(place.admin.0, place.admin.1,place.admin.2)
+#
+# dist_pop_raw %>%
+#   left_join(admins, by = "place.admin.2", suffix = c("", "_dict")) %>%
+#   mutate(place.admin.0 = coalesce(place.admin.0, place.admin.0_dict),
+#          place.admin.1 = coalesce(place.admin.1, place.admin.1_dict)) %>%
+#   select(-place.admin.0_dict, -place.admin.1_dict) %>%
+#   mutate(year = as.numeric(year)) %>%
+#   group_by(place.admin.0, place.admin.1,place.admin.2) %>%
+#   mutate(birth_pop = pop_ext(birth_pop, year)) %>%
+#   mutate(year = as.character(year)) -> dist_pop
+
+
+### check
+dist_pop %>% filter(is.na(birth_pop)) -> na_pop
+write.xlsx(na_pop,"missing_pop.xlsx", rowNames = F)
+
+dist_pop %>%
+  group_by(place.admin.2) %>%
+  summarise(n_unique = n_distinct(year)) %>%
+  distinct(n_unique)
 
 prov_pop <- raw.data$prov.pop
 
@@ -101,6 +156,7 @@ prov_pop %>%
 raw_sia <- raw.data$sia
 
 raw_sia %>%
+  mutate(activity.start.date = as.Date(activity.start.date)) %>%
   filter(
     place.admin.0 %in% countries,
     activity.start.date >= date_start & activity.start.date < date_end,
@@ -109,7 +165,6 @@ raw_sia %>%
     status == "Done"
   ) %>%
   mutate(
-    activity.start.date = as.Date(activity.start.date),
     year = datebreak_to_year_factor(activity.start.date, cohort_birthdays)
   ) %>%
   mutate(place.admin.2 = case_when(place.admin.2 == "WAG HAMRA" ~ "WAGHIMERA", # keep the name consistent between scope, sia, and population data
@@ -154,6 +209,15 @@ dist_pop %>%
   group_by(place.admin.0, place.admin.1, place.admin.2) %>%
   mutate(n_sia_experienced = cumsum(n_sia_per_year)) -> sia_pop
 
+
+## Check: admin2 that have NA in population:
+dist_no_pop <- sia_pop %>%
+  filter(is.na(birth_pop))
+
+
+
+
+
 #### calculate the unprotected children number before strategies ####
 sia_pop %>%
   mutate(n_0_dose_pre = birth_pop * get_p_unprotected(0, n_sia_experienced, p_missing = p_missing),
@@ -164,6 +228,13 @@ sia_pop %>%
   mutate(all_unprotected_prov_pre = sum(unprotected_pre),
          all_0_dose_prov_pre = sum(n_0_dose_pre),
          all_other_dose_prov_pre = sum(n_1_dose_pre) + sum(n_2_dose_pre)) -> sia_pop_unpro
+
+
+### check: NA in pop
+sia_pop_unpro %>%
+  filter(is.na(birth_pop)) -> t
+
+nrow(t)
 
 #### Join with scope data to calculate unprotected after strategies ####
 sia_pop_unpro %>%
@@ -207,6 +278,14 @@ sia_pop_scope_prov_post_full %>%
 
 write.xlsx(sia_pop_scope_prov_post, file = "strategies.xlsx", rowNames = F)
 
+sia_pop_scope_prov_post %>%
+  filter(u5pop < ideal_population | u5pop < reduced_population) %>%
+  select(place.admin.0, place.admin.1, ideal_population, reduced_population, u5pop)%>%
+  mutate(year = 2026) -> underestimated_prov_pop
+
+write.csv(underestimated_prov_pop, file = "underestimated_province_pop.csv", row.names = F)
+
+
 ### If to estimate how many are partially protected vs how many are fully protected:
 
 
@@ -230,7 +309,7 @@ sia_pop_scope_prov_post %>%
                         names_to = "Strategies", values_to = "number") %>%
     ggplot() +
     geom_col(aes(x = place.admin.1, y = number, fill = Strategies), position = "dodge") +
-    facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
+    facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free") +
     xlab("State") +
     ylab("Number of Population") +
     labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
@@ -248,7 +327,7 @@ sia_pop_scope_prov_post %>%
                       names_to = "Strategies", values_to = "number") %>%
   ggplot() +
   geom_col(aes(x = place.admin.1, y = number, fill = Strategies), position = "dodge") +
-  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
+  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free") +
   xlab("State") +
   ylab("Number of population that are fully protected after strategies") +
   labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
@@ -266,7 +345,7 @@ sia_pop_scope_prov_post %>%
                       names_to = "Strategies", values_to = "number") %>%
   ggplot() +
   geom_col(aes(x = place.admin.1, y = number, fill = Strategies), position = "dodge") +
-  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
+  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free") +
   xlab("State") +
   ylab("Number of population that are partially protected after strategies") +
   labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
@@ -284,7 +363,7 @@ sia_pop_scope_prov_post %>%
                       names_to = "Strategies", values_to = "number") %>%
   ggplot() +
   geom_col(aes(x = place.admin.1, y = number, fill = Strategies), position = "dodge") +
-  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
+  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free") +
   xlab("State") +
   ylab("Number of AFP cases that could have after strategies") +
   labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
@@ -302,7 +381,7 @@ sia_pop_scope_prov_post %>%
                       names_to = "Strategies", values_to = "number") %>%
   ggplot() +
   geom_col(aes(x = place.admin.1, y = number, fill = Strategies), position = "dodge") +
-  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free_y") +
+  facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free") +
   xlab("State") +
   ylab("Number of AFP cases that could have from the partially-protected children") +
   labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
