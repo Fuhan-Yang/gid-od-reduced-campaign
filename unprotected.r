@@ -2,11 +2,12 @@ rm(list = ls())
 library(dplyr)
 library(ggplot2)
 library(openxlsx)
+source("functions.R")
 
 ## Regions to analyze ##
 ### countries
 countries <- c(
-    "NIGERIA",
+    # "NIGERIA",
     # "CHAD",
     "ETHIOPIA"
     # "NIGER",
@@ -15,15 +16,27 @@ countries <- c(
 
 
 #### Import the data ###
-# raw.data <- sirfunctions::get_all_polio_data(
-#     size = "small", data_folder = "GID/PEB/SIR/Data",
-#     polis_folder = "GID/PEB/SIR/POLIS"
-# )
+raw.data <- sirfunctions::get_all_polio_data(
+    size = "small", data_folder = "GID/PEB/SIR/Data",
+    polis_folder = "GID/PEB/SIR/POLIS"
+)
 # save(raw.data, file = "raw.data.Rdata")
 
-load("raw.data.Rdata")
+global.dist <-
+  sirfunctions::load_clean_dist_sp(
+    fp = file.path(
+      "GID/PEB/SIR",
+      polis_folder="Sandbox/POLIS_fy",
+      "misc",
+      "global.dist.rds"
+    ),
+    type = "long"
+  )
 
-### params ###
+# load("raw.data.Rdata")
+# load("global.dist.Rdata")
+
+##### Config:  params #########
 
 ### population that have born during this period are eligible for protection
 date_start <- as.Date("2021-11-01")
@@ -37,68 +50,17 @@ p_missing <- 0.3
 
 ### age brackets given period ###
 cohort_birthdays <- seq(date_start, date_end, "1 year")
-
-
-### functions ###
-# get the probability of eligible for protection: the one that has been exposed to n SIA with n_sia_cumu have been given since born
-get_p_unprotected <- function(n, n_sia_cumu, p_missing) {
-    dbinom(n, n_sia_cumu, (1 - p_missing))
-}
-
-# convert birthdays to year-factor
-# split the sia date into intervals with datebreak
-datebreak_to_year_factor <- function(date, datebreak) {
-    factor(findInterval(date, datebreak),
-        levels = c(1:(length(datebreak) - 1)),
-        labels = format(datebreak[-1], "%Y")
-    )
-}
-
-# the strategies will implement proportional to the n_0,1,2 children, get the proportion #
-calculate_protected <- function(p_missing, strategy_pop, prov_pop) {
-  (1-p_missing)^2*strategy_pop * strategy_pop/prov_pop
-}
-
-### unprotected to case ###
-s_to_c <- function(s, attack_rate, ci_r) {
-   s*attack_rate*ci_r
-}
-
-### extrapolate the missing population data: same for the next year ###
-pop_ext <- function(pop, year, max_gap = 1) {
-# order by year within the group
-  ord <- order(year)
-  pop_ord <- pop[ord]
-  year_ord <- year[ord]
-
-  filled <- pop_ord
-  na_idx <- which(is.na(pop_ord))
-
-  for (i in na_idx) {
-    y <- year_ord[i]
-
-    # look for the nearest non-NA value within max_gap years before/after
-    candidates <- which(!is.na(pop_ord) & abs(year_ord - y) <= max_gap)
-
-    if (length(candidates) > 0) {
-      # pick the closest year; if tie (one before, one after), prefer the earlier year
-      dists <- abs(year_ord[candidates] - y)
-      best <- candidates[which.min(dists)]
-      filled[i] <- pop_ord[best]
-    }
-    # else leave as NA (gap too large to safely extrapolate)
-  }
-
-  # return in original row order
-  filled[order(ord)]
-}
-
-### Given place.admin.2, backfill the missing admin.0 and admin.1
-place_ext <- function(place.admin.2) {
-
-}
-
 birthyears <- as.character(c(2022:2026)) # these are the years when the to-be-protect cohorts were born
+
+eth_crs <- 32637
+
+global.dist %>%
+  filter(ADM0_NAME == "ETHIOPIA", active.year.01 %in% birthyears) %>%
+  rename(place.admin.0 = ADM0_NAME, place.admin.1 = ADM1_NAME, place.admin.2 = ADM2_NAME) %>%
+  mutate(year = as.character(active.year.01)) %>%
+  select(place.admin.0, place.admin.1, place.admin.2, year, AREA_SQM, GUID) -> eth_shape
+
+
 
 ### One should start with population data, and force for each admin2, the age group has to be 0-4.
 raw.data$dist.pop %>%
@@ -114,9 +76,42 @@ raw.data$dist.pop %>%
     # fix inconsistency between sia and pop data
     select("place.admin.0", "place.admin.1", "place.admin.2", "year", "u5pop") %>%
     filter(place.admin.0 %in% countries, year %in% birthyears) %>%
-    tidyr::complete(place.admin.2, year) %>%
+   #  tidyr::complete(place.admin.2, year) %>%
     mutate(birth_pop = u5pop / 5) %>%
     select(place.admin.0, place.admin.1, place.admin.2, year, birth_pop) -> dist_pop
+
+
+## interpolate the population using the map in 2026 ##
+interpolated_dist_pop <- geo_data_remap(data_to_interpolate = dist_pop,
+                                        shapefile = eth_shape,
+                                        target_year = "2026",
+                                        data_col_name = "birth_pop", crs = eth_crs,
+                                        geo_id = "GUID", admin_level = "2", na.action = "NA is 0")
+
+
+
+eth_2022 <- dist_pop %>%
+  left_join(eth_shape, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
+  filter(year == "2022")
+
+eth_2022_inter <- interpolated_dist_pop %>%
+  filter(year == "2022")
+
+eth_2022 %>%
+  sf::st_as_sf() %>%
+  ggplot() +
+  geom_sf(aes(fill = birth_pop)) +
+  scale_fill_viridis_c(option = "H") +
+  theme_bw()
+
+eth_2022_inter %>%
+  sf::st_as_sf() %>%
+  ggplot() +
+  geom_sf(aes(fill = birth_pop)) +
+  scale_fill_viridis_c(option = "H") +
+  theme_bw()
+
+
 
 
 ### There are missing data for admin.0, admin.1 and pop when pop is not available in certain years. Impute them
@@ -135,14 +130,10 @@ raw.data$dist.pop %>%
 #   mutate(year = as.character(year)) -> dist_pop
 
 
-### check
-dist_pop %>% filter(is.na(birth_pop)) -> na_pop
-write.xlsx(na_pop,"missing_pop.xlsx", rowNames = F)
-
-dist_pop %>%
-  group_by(place.admin.2) %>%
-  summarise(n_unique = n_distinct(year)) %>%
-  distinct(n_unique)
+# dist_pop %>%
+#   group_by(place.admin.2) %>%
+#   summarise(n_unique = n_distinct(year)) %>%
+#   distinct(n_unique)
 
 prov_pop <- raw.data$prov.pop
 
@@ -181,12 +172,42 @@ raw_sia %>%
   ) -> sia_count
 
 
+## remap the district-specific sia count to 2026 map #
+
+interpolated_sia_count <- geo_data_remap(data_to_interpolate = sia_count,
+                                shapefile = eth_shape,
+                                target_year = "2026",
+                                data_col_name = "n_sia_per_year", crs = eth_crs,
+                                geo_id = "GUID", admin_level = "2", na.action = "NA is 0")
+
+interpolated_sia_count %>%
+  bind_rows(sia_count %>% filter(year == "2026")) -> new_sia_count
+
+
+
+# sia_count %>%
+#   left_join(eth_shape, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
+#   sf::st_as_sf() %>%
+#   ggplot() +
+#   geom_sf(aes(fill = n_sia_per_year)) +
+#   scale_fill_viridis_c(option = "H") +
+#   facet_wrap(year~., nrow = 2)
+#
+#
+# new_sia_count %>%
+#   ggplot() +
+#   geom_sf(aes(fill = n_sia_per_year)) +
+#   scale_fill_viridis_c(option = "H") +
+#   facet_wrap(year~., nrow = 2)
+
+
+
 ###### scope data from strategies ###
 scope <- read.csv("data/scope.csv")
 
 ## the admin 1 that are 0 in both strategies will be removed from the analysis ##
-admin1_no_data <- scope %>%
-  filter(is.na(target_population) & is.na(reduced_population))
+# admin1_no_data <- scope %>%
+#   filter(is.na(target_population) & is.na(reduced_population))
 
 scope %>%
   # anti_join(admin1_no_data) %>%
@@ -201,7 +222,7 @@ scope %>%
 
 #### Join SIA data with dist pop data to calculate unprotected before strategies ###
 dist_pop %>%
-  left_join(sia_count, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
+  left_join(new_sia_count, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
 # there are NA after joining, carefully impute them #
   mutate(n_sia_per_year = if_else(is.na(n_sia_per_year), 0, n_sia_per_year),
          age_at_strategies = 2026 - as.numeric(as.character(year))) %>% # if NA here, meaning no SIA in this year
