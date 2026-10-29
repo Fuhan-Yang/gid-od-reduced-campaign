@@ -7,7 +7,7 @@ source("functions.R")
 ## Regions to analyze ##
 ### countries
 countries <- c(
-    # "NIGERIA",
+    "NIGERIA",
     # "CHAD",
     "ETHIOPIA"
     # "NIGER",
@@ -55,10 +55,10 @@ birthyears <- as.character(c(2022:2026)) # these are the years when the to-be-pr
 eth_crs <- 32637
 
 global.dist %>%
-  filter(ADM0_NAME == "ETHIOPIA", active.year.01 %in% birthyears) %>%
+  filter(ADM0_NAME %in% countries, active.year.01 %in% birthyears) %>%
   rename(place.admin.0 = ADM0_NAME, place.admin.1 = ADM1_NAME, place.admin.2 = ADM2_NAME) %>%
   mutate(year = as.character(active.year.01)) %>%
-  select(place.admin.0, place.admin.1, place.admin.2, year, AREA_SQM, GUID) -> eth_shape
+  select(place.admin.0, place.admin.1, place.admin.2, year, AREA_SQM, GUID) -> shapefile
 
 
 
@@ -83,51 +83,39 @@ raw.data$dist.pop %>%
 
 ## interpolate the population using the map in 2026 ##
 interpolated_dist_pop <- geo_data_remap(data_to_interpolate = dist_pop,
-                                        shapefile = eth_shape,
+                                        shapefile = shapefile,
                                         target_year = "2026",
                                         data_col_name = "birth_pop", crs = eth_crs,
                                         geo_id = "GUID", admin_level = "2", na.action = "NA is 0")
 
 
 
-eth_2022 <- dist_pop %>%
-  left_join(eth_shape, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
-  filter(year == "2022")
-
-eth_2022_inter <- interpolated_dist_pop %>%
-  filter(year == "2022")
-
-eth_2022 %>%
-  sf::st_as_sf() %>%
-  ggplot() +
-  geom_sf(aes(fill = birth_pop)) +
-  scale_fill_viridis_c(option = "H") +
-  theme_bw()
-
-eth_2022_inter %>%
-  sf::st_as_sf() %>%
-  ggplot() +
-  geom_sf(aes(fill = birth_pop)) +
-  scale_fill_viridis_c(option = "H") +
-  theme_bw()
-
-
-
-
-### There are missing data for admin.0, admin.1 and pop when pop is not available in certain years. Impute them
-#### Impute admin.0 and admin.1 ####
-# admins <- dist_pop %>% distinct(place.admin.2, .keep_all = T) %>%
-#   select(place.admin.0, place.admin.1,place.admin.2)
+# eth_2022 <- dist_pop %>%
+#   left_join(shapefile, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
+#   filter(year == "2022")
 #
-# dist_pop_raw %>%
-#   left_join(admins, by = "place.admin.2", suffix = c("", "_dict")) %>%
-#   mutate(place.admin.0 = coalesce(place.admin.0, place.admin.0_dict),
-#          place.admin.1 = coalesce(place.admin.1, place.admin.1_dict)) %>%
-#   select(-place.admin.0_dict, -place.admin.1_dict) %>%
-#   mutate(year = as.numeric(year)) %>%
-#   group_by(place.admin.0, place.admin.1,place.admin.2) %>%
-#   mutate(birth_pop = pop_ext(birth_pop, year)) %>%
-#   mutate(year = as.character(year)) -> dist_pop
+# eth_2022_inter <- interpolated_dist_pop %>%
+#   filter(year == "2022")
+#
+# eth_2022 %>%
+#   sf::st_as_sf() %>%
+#   ggplot() +
+#   geom_sf(aes(fill = birth_pop)) +
+#   scale_fill_viridis_c(option = "H") +
+#   theme_bw()
+#
+# eth_2022_inter %>%
+#   sf::st_as_sf() %>%
+#   ggplot() +
+#   geom_sf(aes(fill = birth_pop)) +
+#   scale_fill_viridis_c(option = "H") +
+#   theme_bw()
+
+
+interpolated_dist_pop %>%
+  bind_rows(dist_pop %>% filter(year == "2026")) %>%
+  st_drop_geometry() %>%
+  select(place.admin.0, place.admin.1, place.admin.2, year, birth_pop)-> new_dist_pop
 
 
 # dist_pop %>%
@@ -175,18 +163,24 @@ raw_sia %>%
 ## remap the district-specific sia count to 2026 map #
 
 interpolated_sia_count <- geo_data_remap(data_to_interpolate = sia_count,
-                                shapefile = eth_shape,
+                                shapefile = shapefile,
                                 target_year = "2026",
                                 data_col_name = "n_sia_per_year", crs = eth_crs,
                                 geo_id = "GUID", admin_level = "2", na.action = "NA is 0")
 
 interpolated_sia_count %>%
-  bind_rows(sia_count %>% filter(year == "2026")) -> new_sia_count
+  bind_rows(sia_count %>% filter(year == "2026")) %>%
+  st_drop_geometry() %>%
+  select(place.admin.0, place.admin.1, place.admin.2, year, n_sia_per_year)-> new_sia_count
 
+
+## There are some regions existing in sia data but not in the shapefile nor population data ##
+# sia_count %>% filter(year == "2026") %>%
+#   anti_join(shapefile %>% filter(year == "2026"), by = "place.admin.2")
 
 
 # sia_count %>%
-#   left_join(eth_shape, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
+#   left_join(shapefile, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
 #   sf::st_as_sf() %>%
 #   ggplot() +
 #   geom_sf(aes(fill = n_sia_per_year)) +
@@ -221,7 +215,7 @@ scope %>%
 
 
 #### Join SIA data with dist pop data to calculate unprotected before strategies ###
-dist_pop %>%
+new_dist_pop %>%
   left_join(new_sia_count, by = c("place.admin.0", "place.admin.1", "place.admin.2", "year")) %>%
 # there are NA after joining, carefully impute them #
   mutate(n_sia_per_year = if_else(is.na(n_sia_per_year), 0, n_sia_per_year),
@@ -231,16 +225,9 @@ dist_pop %>%
   mutate(n_sia_experienced = cumsum(n_sia_per_year)) -> sia_pop
 
 
-## Check: admin2 that have NA in population:
-dist_no_pop <- sia_pop %>%
-  filter(is.na(birth_pop))
-
-
-
-
-
 #### calculate the unprotected children number before strategies ####
 sia_pop %>%
+  mutate(n_sia_experienced = round(n_sia_experienced)) %>%
   mutate(n_0_dose_pre = birth_pop * get_p_unprotected(0, n_sia_experienced, p_missing = p_missing),
          n_1_dose_pre = birth_pop * get_p_unprotected(1, n_sia_experienced, p_missing = p_missing),
          n_2_dose_pre = birth_pop * get_p_unprotected(2, n_sia_experienced, p_missing = p_missing)) %>%
@@ -255,7 +242,7 @@ sia_pop %>%
 sia_pop_unpro %>%
   filter(is.na(birth_pop)) -> t
 
-nrow(t)
+t
 
 #### Join with scope data to calculate unprotected after strategies ####
 sia_pop_unpro %>%
@@ -322,6 +309,14 @@ write.csv(underestimated_prov_pop, file = "underestimated_province_pop.csv", row
 # filter(n_unique > 1)
 
 ##### Visualization
+sia_pop_scope_prov_post %>%
+  rename(`0 dose received before strategies` = "all_0_dose_prov_pre",
+         `1 or 2 doses received before strategies` = "all_other_dose_prov_pre") %>%
+  tidyr::pivot_longer(cols = c("0 dose received before strategies",
+                               "1 or 2 doses received before strategies"),
+                      names_to = "Unprotected before strategies", values_to = "number") -> t
+
+
 sia_pop_scope_prov_post %>%
     rename(`Unprotected Before Strategies` = "all_unprotected_prov_pre",
            `Ideal Scope` = "ideal_population",
