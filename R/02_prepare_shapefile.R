@@ -1,3 +1,4 @@
+library(sf)
 #' Filter and reshape the global district shapefile to ONE country and
 #' the birth-year cohorts under analysis.
 #'
