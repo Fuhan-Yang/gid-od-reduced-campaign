@@ -1,0 +1,47 @@
+
+countries:
+  - "NIGERIA"
+  # - "ETHIOPIA"
+  # - "CHAD"
+  # - "NIGER"
+  # - "CENTRAL AFRICAN REPUBLIC"
+
+date_start: "2021-11-01"
+date_end:   "2026-11-01"
+
+attack_rate: 0.3963697
+ci_r: 0.0005          # 1/2000
+p_missing: 0.3
+
+target_year: "2026"
+
+birthyears: ["2022", "2023", "2024", "2025", "2026"]
+
+# NOTE: UTM 37N (32637) only suits Ethiopia/Nigeria's longitude band.
+# If a new country falls outside this zone, consider a per-country CRS
+# (e.g. a named list keyed by country) instead of one global value.
+crs: 32637
+
+sia_filters:
+  age_group: "0 to 5 years"
+  vaccine_type: "nOPV2"
+  status: "Done"
+
+paths:
+  data_folder: "GID/PEB/SIR/Data"
+  polis_folder: "GID/PEB/SIR/POLIS"
+  global_dist_rds: "GID/PEB/SIR/POLIS/misc/global.dist.rds"
+  scope_csv: "data/scope.csv"
+  output_dir: "output"
+
+# Admin-2 (district) name harmonization, applied to population data to
+# match SIA/shapefile naming. Add country-specific entries as needed --
+# this is the piece most likely to grow as new countries are added.
+admin2_name_fixes:
+  "MAYO BELWA": "MAYO-BELWA"
+  "TAFAWA BALEWA": "TAFAWA-BALEWA"
+  "DANGE SHUNI": "DANGE-SHUNI"
+  "WAG HAMRA": "WAGHIMERA"
+
+sia_admin2_name_fixes:
+  "WAG HAMRA": "WAGHIMERA"
