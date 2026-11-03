@@ -1,3 +1,4 @@
+library(sf)
 #' Build district-year SIA round counts for ONE country.
 #'
 #' @param raw_sia raw.data$sia
@@ -19,7 +20,7 @@ prepare_sia_counts <- function(raw_sia, country, date_start, date_end,
       status == sia_filters$status
     ) %>%
     dplyr::mutate(year = datebreak_to_year_factor(activity.start.date, cohort_birthdays)) %>%
-    dplyr::mutate(place.admin.2 = dplyr::recode(place.admin.2, !!!name_fixes)) %>%
+    dplyr::mutate(place.admin.2 = apply_name_fixes(place.admin.2, name_fixes)) %>%
     dplyr::select(sia.code, place.admin.0, activity.start.date, place.admin.1, place.admin.2, year) %>%
     dplyr::distinct() %>%
     dplyr::group_by(place.admin.2, year) %>%
