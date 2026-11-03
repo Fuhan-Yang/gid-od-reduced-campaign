@@ -3,8 +3,14 @@ library(sf)
 library(areal)
 
 # get the probability of eligible for protection: the one that has been exposed to n SIA with n_sia_cumu have been given since born
-get_p_unprotected <- function(n, n_sia_cumu, p_missing) {
-  dbinom(n, n_sia_cumu, (1 - p_missing))
+get_sia_coverage <- function(n, n_sia_cumu, p_missing, type = "independent") {
+
+  if(type == "independent") {
+    dbinom(n, n_sia_cumu, (1 - p_missing))
+  } else if(type == "same") {
+    p_missing
+  }
+
 }
 
 # convert birthdays to year-factor
@@ -17,8 +23,14 @@ datebreak_to_year_factor <- function(date, datebreak) {
 }
 
 # the strategies will implement proportional to the n_0,1,2 children, get the proportion #
-calculate_protected <- function(p_missing, strategy_pop, prov_pop) {
-  (1-p_missing)^2*strategy_pop * strategy_pop/prov_pop
+calculate_protected <- function(p_missing, strategy_pop, prov_pop, type = "independent"){
+
+  if(type == "independent") {
+    (1-p_missing)^2*strategy_pop * strategy_pop/prov_pop
+  } else if(type == "same") {
+    (1-p_missing)*strategy_pop * strategy_pop/prov_pop
+  }
+
 }
 
 ### unprotected to case ###
