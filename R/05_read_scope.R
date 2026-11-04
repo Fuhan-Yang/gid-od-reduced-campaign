@@ -8,18 +8,26 @@
 #' @param scope_csv_path Path to scope.csv
 #' @param country Optional single country name to filter to
 #' @return dataframe: place.admin.0, place.admin.1, ideal_population, reduced_population
-prepare_scope <- function(scope_csv_path, country = NULL) {
-  scope <- read.csv(scope_csv_path) %>%
+prepare_scope <- function(scope_csv_path, country, admin1_name_fixes) {
+
+  scope <- read.csv(scope_csv_path)
+
+  admin1_no_data <- scope %>%
+    filter(is.na(target_population) & is.na(reduced_population))
+   
+  scope <- scope %>%
+    dplyr::anti_join(admin1_no_data, by = c("country", "state")) %>%
     dplyr::mutate(
       place.admin.1 = toupper(state),
       ideal_population   = dplyr::if_else(is.na(target_population), 0, target_population),
       reduced_population = dplyr::if_else(is.na(reduced_population), 0, reduced_population)
     ) %>%
+    dplyr::mutate(place.admin.1 = apply_name_fixes(place.admin.1, admin1_name_fixes)) %>%
     dplyr::rename(place.admin.0 = country) %>%
     dplyr::select(place.admin.0, place.admin.1, ideal_population, reduced_population)
 
   if (!is.null(country)) {
-    scope <- scope %>% dplyr::filter(place.admin.0 == country)
+    scope <- scope %>% dplyr::filter(place.admin.0 %in% country)
   }
   scope
 }
