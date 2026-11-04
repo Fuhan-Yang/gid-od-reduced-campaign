@@ -1,7 +1,7 @@
 
 countries:
-  - "NIGERIA"
-  # - "ETHIOPIA"
+  # - "NIGERIA"
+  - "ETHIOPIA"
   # - "CHAD"
   # - "NIGER"
   # - "CENTRAL AFRICAN REPUBLIC"
@@ -37,6 +37,11 @@ paths:
 # Admin-2 (district) name harmonization, applied to population data to
 # match SIA/shapefile naming. Add country-specific entries as needed --
 # this is the piece most likely to grow as new countries are added.
+
+admin1_name_fixes:
+  "OROMIYA": "OROMIPA"
+  "SOUTH WEST ETHIOPIA": "SOUTHWEST ETHIOPIA"
+
 admin2_name_fixes:
   "MAYO BELWA": "MAYO-BELWA"
   "TAFAWA BALEWA": "TAFAWA-BALEWA"

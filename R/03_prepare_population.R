@@ -1,3 +1,4 @@
+library(sf)
 #' Clean district-level population data for ONE country: rename,
 #' harmonize admin-2 names, filter to years, compute birth cohort.
 #'
@@ -9,8 +10,10 @@
 prepare_district_population <- function(dist_pop_raw, country, birthyears, name_fixes) {
   dist_pop_raw %>%
     dplyr::rename(place.admin.0 = ctry, place.admin.1 = prov, place.admin.2 = dist) %>%
-    dplyr::mutate(year = as.character(year)) %>%
-    dplyr::mutate(place.admin.2 = dplyr::recode(place.admin.2, !!!name_fixes)) %>%
+    dplyr::mutate(year = as.character(year), 
+                  place.admin.1 = apply_name_fixes(place.admin.1, name_fixes), 
+                  place.admin.2 = apply_name_fixes(place.admin.2, name_fixes)) %>%
+    dplyr::mutate(place.admin.1 = if_else(place.admin.1 == "OROMIYA", "OROMIA", place.admin.1)) %>%
     dplyr::select(place.admin.0, place.admin.1, place.admin.2, year, u5pop) %>%
     dplyr::filter(place.admin.0 == country, year %in% birthyears) %>%
     dplyr::mutate(birth_pop = u5pop / 5) %>%

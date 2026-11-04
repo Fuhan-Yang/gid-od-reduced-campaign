@@ -128,3 +128,12 @@ geo_interpolate <- function(source, target, data_col_name, crs, geo_id) {
   aw_interpolate(target, tid = !!rlang::sym(geo_id), source, sid = !!rlang::sym(geo_id),
                  weight = "sum", output = "sf", extensive = data_col_name)
 }
+
+apply_name_fixes <- function(x, name_fixes) {
+  if (is.null(name_fixes) || length(name_fixes) == 0) return(x)
+  dplyr::replace_values(
+    as.character(x),
+    from = names(name_fixes),
+    to   = unlist(name_fixes, use.names = FALSE)
+  )
+}
