@@ -1,6 +1,6 @@
 
 countries:
-  # - "NIGERIA"
+  - "NIGERIA"
   - "ETHIOPIA"
   # - "CHAD"
   # - "NIGER"
@@ -9,18 +9,16 @@ countries:
 date_start: "2021-11-01"
 date_end:   "2026-11-01"
 
-attack_rate: 0.3963697
-ci_r: 0.0005          # 1/2000
 p_missing: 0.3
 
 target_year: "2026"
 
 birthyears: ["2022", "2023", "2024", "2025", "2026"]
 
-# NOTE: UTM 37N (32637) only suits Ethiopia/Nigeria's longitude band.
-# If a new country falls outside this zone, consider a per-country CRS
-# (e.g. a named list keyed by country) instead of one global value.
-crs: 32637
+crs: 
+  NIGERIA: 32632
+  ETHIOPIA: 32637
+
 
 sia_filters:
   age_group: "0 to 5 years"
@@ -39,7 +37,8 @@ paths:
 # this is the piece most likely to grow as new countries are added.
 
 admin1_name_fixes:
-  "OROMIYA": "OROMIPA"
+  "OROMIIA": "OROMIA"
+  "OROMIYA": "OROMIA"
   "SOUTH WEST ETHIOPIA": "SOUTHWEST ETHIOPIA"
 
 admin2_name_fixes:
@@ -48,5 +47,3 @@ admin2_name_fixes:
   "DANGE SHUNI": "DANGE-SHUNI"
   "WAG HAMRA": "WAGHIMERA"
 
-sia_admin2_name_fixes:
-  "WAG HAMRA": "WAGHIMERA"
