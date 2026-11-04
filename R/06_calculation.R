@@ -35,9 +35,9 @@ calculate_unprotected_pre <- function(sia_pop, p_missing) {
     dplyr::mutate(unprotected_pre = n_0_dose_pre + n_1_dose_pre + n_2_dose_pre) %>%
     dplyr::group_by(place.admin.0, place.admin.1) %>%
     dplyr::mutate(
-      all_unprotected_prov_pre    = sum(unprotected_pre),
-      all_0_dose_prov_pre         = sum(n_0_dose_pre),
-      all_other_dose_prov_pre     = sum(n_1_dose_pre) + sum(n_2_dose_pre)
+      all_unprotected_prov_pre    = sum(unprotected_pre, na.rm = TRUE),
+      all_0_dose_prov_pre         = sum(n_0_dose_pre, na.rm = TRUE),
+      all_other_dose_prov_pre     = sum(n_1_dose_pre, na.rm = TRUE) + sum(n_2_dose_pre, na.rm = TRUE)
     ) %>%
     dplyr::ungroup()
 }
