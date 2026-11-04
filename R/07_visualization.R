@@ -14,8 +14,8 @@ library(ggplot2)
 make_barplot <- function(data,
                         country,
                         out_dir,
-                        width = 10,
-                        height = 8,
+                        width = 8.5,
+                        height = 5,
                         save = TRUE) {
 
   caption_txt <- "CDC Internal Analysis | Pre-decisional Draft"
@@ -25,34 +25,38 @@ make_barplot <- function(data,
     data <- data %>% filter(place.admin.0 == country)
   }
 
-  # ---- Plot 1: unprotected before strategies ----
+  # ---- Plot 1: unprotected before campaigns ----
+  ymax <- max(data$all_0_dose_prov_pre + data$all_other_dose_prov_pre, na.rm = T)
   p_before <- data %>%
-    rename(`0 dose received before strategies` = all_0_dose_prov_pre,
-           `1 or 2 doses received before strategies` = all_other_dose_prov_pre) %>%
-    tidyr::pivot_longer(cols = c(`0 dose received before strategies`,
-                          `1 or 2 doses received before strategies`),
-                 names_to = "Unprotected before strategies",
-                 values_to = "number") %>%
+    rename(`0 dose received before campaigns` = "all_0_dose_prov_pre",
+         `1 or 2 doses received before campaigns` = "all_other_dose_prov_pre") %>%
+    tidyr::pivot_longer(cols = c("0 dose received before campaigns",
+                                "1 or 2 doses received before campaigns"),
+                        names_to = "Vulnerable\nbefore campaigns", values_to = "number") %>%
     ggplot() +
-    geom_col(aes(x = place.admin.1, y = number,
-                 fill = `Unprotected before strategies`),
-             position = "stack") +
-    facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free") +
+    geom_col(aes(x = place.admin.1, y = number, fill = `Vulnerable\nbefore campaigns`), position = "stack") +
+    scale_y_continuous(breaks = round(seq(0, ymax * 1.1, length.out = 8)),
+                       labels = round(seq(0, ymax * 1.1, length.out = 8)/1e5)) +
     xlab("State") +
-    ylab("Number of Population") +
-    labs(caption = caption_txt) +
+    ylab("Number of children vulnerable (\u00d7 100,000)") +
+    # labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
     coord_flip() +
     theme_bw() +
     theme(legend.position = "bottom")
 
-  # ---- Plot 2: unprotected after strategies ----
+
+  # ---- Plot 2: unprotected after campaigns ----
+  ymax <- max(data$unprotected_reduced_post - data$unprotected_ideal_post, na.rm = T)
   p_after <- data %>%
     mutate(difference = unprotected_reduced_post - unprotected_ideal_post) %>%
     ggplot() +
     geom_col(aes(x = place.admin.1, y = difference)) +
+    scale_y_continuous(breaks = round(seq(0, ymax * 1.1, length.out = 8)),
+                      labels = round(seq(0, ymax * 1.1, length.out = 8)/1e5)) +
+    # facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free") +
     xlab("State") +
-    ylab("Number of population that remain unprotected after strategies") +
-    labs(caption = caption_txt) +
+    ylab("Number of children that remain vulnerable after campaigns (\u00d7 100,000)") +
+    # labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
     coord_flip() +
     theme_bw() +
     theme(legend.position = "bottom")
@@ -60,10 +64,10 @@ make_barplot <- function(data,
   # ---- Save ----
   if (save) {
     ggsave(file.path(out_dir,
-                     paste0("Histogram of unprotected before strategies ", country, ".png")),
+                     paste0("Histogram of unprotected before campaigns ", country, ".png")),
            plot = p_before, width = width, height = height)
     ggsave(file.path(out_dir,
-                     paste0("Histogram of unprotected after strategies ", country, ".png")),
+                     paste0("Histogram of unprotected after campaigns ", country, ".png")),
            plot = p_after, width = width, height = height)
   }
 }
@@ -73,36 +77,39 @@ make_table <- function(data, out_dir, country) {
   country_df <- data %>%
     select(-u5pop) %>%
     group_by(place.admin.0) %>%
-    summarise(across(where(is.numeric), \(x) sum(x, na.rm = T)))
+    summarise(across(where(is.numeric), \(x) sum(x, na.rm = T))) %>%
+    ungroup() %>%
+    mutate(protected_ideal_post = partially_protected_ideal_post + fully_protected_ideal_post,
+          protected_reduced_post = partially_protected_reduced_post + fully_protected_reduced_post) %>%
+    select(place.admin.0, all_unprotected_prov_pre, all_0_dose_prov_pre,
+          all_other_dose_prov_pre,
+          unprotected_ideal_post, protected_ideal_post, unprotected_reduced_post,
+          protected_reduced_post)
   
   flextable(country_df) %>%
   set_header_labels(
     place.admin.0 = "Country",
-    all_unprotected_prov_pre = "Total unprotected",
+    all_unprotected_prov_pre = "Total vulnerable",
     all_0_dose_prov_pre = "0 doses",
     all_other_dose_prov_pre = "1 or 2 doses",
-    ideal_population = "Ideal scope",
-    reduced_population = "Reduced scope",
-    unprotected_ideal_post = "Unprotected",
-    partially_protected_ideal_post = "Partially protected",
-    fully_protected_ideal_post = "Fully protected",
-    unprotected_reduced_post = "Unprotected",
-    partially_protected_reduced_post = "Partially protected",
-    fully_protected_reduced_post = "Fully protected"
+    unprotected_ideal_post = "Vulnerable",
+    protected_ideal_post = "Protected", 
+    unprotected_reduced_post = "Vulnerable",
+    protected_reduced_post = "Protected"
   ) %>%
   add_header_row(
-    values = c("", "Before strategies", "Target scope",
-               "After strategies: Ideal scope", "After strategies: Reduced scope"),
-    colwidths = c(1, 3, 2, 3, 3)
+    values = c("", "Before campaigns",
+               "After campaigns: Ideal scope", "After campaigns: Reduced scope"),
+    colwidths = c(1, 3, 2, 2)
   ) %>%
-  colformat_num(j = 1:12, big.mark = ",", digits = 0) %>%
+  colformat_num(j = 1:8, big.mark = ",", digits = 0) %>%
   theme_booktabs() %>%                       # white background, horizontal rules only
   bg(bg = "white", part = "all") %>%
   bold(part = "header") %>%
   align(align = "center", part = "header") %>%
-  align(j = 1:12, align = "right", part = "body") %>%
+  align(j = 1:8, align = "right", part = "body") %>%
   merge_v(j = "place.admin.0") %>%
-  vline(j = c(1, 4, 6, 9), border = officer::fp_border(color = "grey70"), part = "all") %>%
+  vline(j = c(1, 4, 6), border = officer::fp_border(color = "grey70"), part = "all") %>%
   hline(border = officer::fp_border(color = "grey70"), part = "all") %>%
   valign(j = "place.admin.0", valign = "top") %>%
   fontsize(size = 9, part = "all") %>%
@@ -111,7 +118,7 @@ make_table <- function(data, out_dir, country) {
   autofit() -> ft
 
   flextable::save_as_image(ft, path = file.path(out_dir,
-                     paste0("Strategies ", country, ".png")))
+                     paste0("campaigns ", country, ".png")))
 
 }
 
