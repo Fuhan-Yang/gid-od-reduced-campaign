@@ -18,6 +18,7 @@ run_country_pipeline <- function(country, raw_data, global_dist, scope_all, conf
     date_start <- as.Date(config$date_start)
     date_end   <- as.Date(config$date_end)
     cohort_birthdays <- seq(date_start, date_end, "1 year")
+    crs <- config$crs[[country]]
 
     # 2. Shapefile
     cli::cli_progress_message(paste("Prepare shapefile for", country))
@@ -29,20 +30,22 @@ run_country_pipeline <- function(country, raw_data, global_dist, scope_all, conf
     # 3. Population
     cli::cli_progress_message(paste("Prepare population data for", country))
     dist_pop <- prepare_district_population(
-      raw_data$dist.pop, country, config$birthyears, config$admin2_name_fixes
+      raw_data$dist.pop, country, config$birthyears, config$admin1_name_fixes, config$admin2_name_fixes
     )
-    new_dist_pop <- remap_district_population(dist_pop, shapefile, config$target_year, config$crs)
-    prov_pop <- prepare_province_population(raw_data$prov.pop, country, config$target_year)
+    new_dist_pop <- remap_district_population(dist_pop, shapefile, config$target_year, crs)
+    prov_pop <- prepare_province_population(raw_data$prov.pop, country, config$target_year, config$admin1_name_fixes)
+    
     cli::cli_progress_done()
     cli::cli_alert_success(("Population data is ready!"))
+
 
     # 4. SIA
     cli::cli_progress_message(paste("Start calculating for",country))
     sia_count <- prepare_sia_counts(
       raw_data$sia, country, date_start, date_end,
-      cohort_birthdays, config$sia_filters, config$sia_admin2_name_fixes
+      cohort_birthdays, config$sia_filters, config$admin1_name_fixes, config$admin2_name_fixes
     )
-    new_sia_count <- remap_sia_counts(sia_count, shapefile, config$target_year, config$crs)
+    new_sia_count <- remap_sia_counts(sia_count, shapefile, config$target_year, crs)
 
     # 5. Scope (already loaded for all countries; filter to this one)
     scope <- scope_all %>% dplyr::filter(place.admin.0 == country)
@@ -55,7 +58,7 @@ run_country_pipeline <- function(country, raw_data, global_dist, scope_all, conf
     if (nrow(missing_pop_check) > 0) {
       warning(country, ": ", nrow(missing_pop_check),
               " district-year rows have missing birth_pop.")
-    }
+          }
 
     sia_pop_unpro <- calculate_unprotected_pre(sia_pop, config$p_missing)
 

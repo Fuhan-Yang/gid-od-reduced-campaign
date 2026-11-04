@@ -7,13 +7,12 @@ library(sf)
 #' @param birthyears Character vector of birth years
 #' @param name_fixes Named list/vector: old admin2 name -> new admin2 name
 #' @return dataframe with place.admin.0/1/2, year, birth_pop
-prepare_district_population <- function(dist_pop_raw, country, birthyears, name_fixes) {
+prepare_district_population <- function(dist_pop_raw, country, birthyears, admin1_name_fixes, admin2_name_fixes) {
   dist_pop_raw %>%
     dplyr::rename(place.admin.0 = ctry, place.admin.1 = prov, place.admin.2 = dist) %>%
     dplyr::mutate(year = as.character(year), 
-                  place.admin.1 = apply_name_fixes(place.admin.1, name_fixes), 
-                  place.admin.2 = apply_name_fixes(place.admin.2, name_fixes)) %>%
-    dplyr::mutate(place.admin.1 = if_else(place.admin.1 == "OROMIYA", "OROMIA", place.admin.1)) %>%
+                  place.admin.1 = apply_name_fixes(place.admin.1, admin1_name_fixes), 
+                  place.admin.2 = apply_name_fixes(place.admin.2, admin2_name_fixes)) %>%
     dplyr::select(place.admin.0, place.admin.1, place.admin.2, year, u5pop) %>%
     dplyr::filter(place.admin.0 == country, year %in% birthyears) %>%
     dplyr::mutate(birth_pop = u5pop / 5) %>%
@@ -57,11 +56,13 @@ remap_district_population <- function(dist_pop, shapefile, target_year, crs) {
 #' @param prov_pop_raw raw.data$prov.pop
 #' @param country Single country name
 #' @param target_year Character, e.g. "2026"
+#' @param name_fixes List of name fixes for admin levels
 #' @return dataframe: place.admin.0, place.admin.1, u5pop
-prepare_province_population <- function(prov_pop_raw, country, target_year) {
+prepare_province_population <- function(prov_pop_raw, country, target_year, admin1_name_fixes) {
   prov_pop_raw %>%
     dplyr::rename(place.admin.0 = ctry, place.admin.1 = prov) %>%
     dplyr::mutate(year = as.character(year)) %>%
+    dplyr::mutate(place.admin.1 = apply_name_fixes(place.admin.1, admin1_name_fixes)) %>%
     dplyr::filter(place.admin.0 == country, year == target_year) %>%
     dplyr::select(place.admin.0, place.admin.1, u5pop)
 }

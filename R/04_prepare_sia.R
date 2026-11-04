@@ -9,7 +9,7 @@ library(sf)
 #' @param name_fixes Named vector: old admin2 name -> new admin2 name
 #' @return dataframe: place.admin.2, year, place.admin.0, place.admin.1, n_sia_per_year
 prepare_sia_counts <- function(raw_sia, country, date_start, date_end,
-                               cohort_birthdays, sia_filters, name_fixes) {
+                               cohort_birthdays, sia_filters, admin1_name_fixes, admin2_name_fixes) {
   raw_sia %>%
     dplyr::mutate(activity.start.date = as.Date(activity.start.date)) %>%
     dplyr::filter(
@@ -20,7 +20,10 @@ prepare_sia_counts <- function(raw_sia, country, date_start, date_end,
       status == sia_filters$status
     ) %>%
     dplyr::mutate(year = datebreak_to_year_factor(activity.start.date, cohort_birthdays)) %>%
-    dplyr::mutate(place.admin.2 = apply_name_fixes(place.admin.2, name_fixes)) %>%
+    dplyr::mutate(
+      place.admin.1 = apply_name_fixes(place.admin.1, admin1_name_fixes),
+      place.admin.2 = apply_name_fixes(place.admin.2, admin2_name_fixes)
+    ) %>%
     dplyr::select(sia.code, place.admin.0, activity.start.date, place.admin.1, place.admin.2, year) %>%
     dplyr::distinct() %>%
     dplyr::group_by(place.admin.2, year) %>%
