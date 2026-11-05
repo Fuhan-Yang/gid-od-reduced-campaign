@@ -119,7 +119,13 @@ geo_interpolate <- function(source, target, data_col_name, crs, geo_id) {
 
   source %>%
     sf::st_as_sf() %>%
-    sf::st_transform(crs = crs) -> source
+    sf::st_transform(crs = crs) %>%
+    sf::st_make_valid() -> source
+
+  target %>%
+    sf::st_as_sf() %>%
+    sf::st_transform(crs = crs) %>%
+    sf::st_make_valid() -> target
 
   if(!ar_validate(source, target, varList = data_col_name)) {
     stop("Validation failed. Run ar_validate() with verbose = T to diagnose.")
