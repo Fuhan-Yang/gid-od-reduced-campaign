@@ -1,7 +1,7 @@
 
 countries:
-  # - "NIGERIA"
-  # - "ETHIOPIA"
+  - "NIGERIA"
+  - "ETHIOPIA"
   - "CHAD"
   # - "NIGER"
   - "CENTRAL AFRICAN REPUBLIC"
@@ -50,6 +50,9 @@ admin1_name_fixes:
   "REGION 6": "RS6"
   "REGION 7": "RS7"
   "DAR SILA": "SILA"
+  "BAHR ELGHAZAL": "BAHR-EL GAZAL"
+  "MAYO KEBBI EST": "MAYO-KEBBI EST"
+  "MAYO KEBBI OUEST": "MAYO-KEBBI OUEST"
 
 admin2_name_fixes:
   "MAYO BELWA": "MAYO-BELWA"
