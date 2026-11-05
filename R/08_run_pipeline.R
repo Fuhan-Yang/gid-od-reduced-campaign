@@ -38,7 +38,6 @@ run_country_pipeline <- function(country, raw_data, global_dist, scope_all, conf
     cli::cli_progress_done()
     cli::cli_alert_success(("Population data is ready!"))
 
-
     # 4. SIA
     cli::cli_progress_message(paste("Start calculating for",country))
     sia_count <- prepare_sia_counts(
@@ -56,14 +55,14 @@ run_country_pipeline <- function(country, raw_data, global_dist, scope_all, conf
 
     missing_pop_check <- sia_pop %>% dplyr::filter(is.na(birth_pop))
     if (nrow(missing_pop_check) > 0) {
-      warning(country, ": ", nrow(missing_pop_check),
+        warning(country, ": ", nrow(missing_pop_check),
               " district-year rows have missing birth_pop.")
-          }
+    }
 
     sia_pop_unpro <- calculate_unprotected_pre(sia_pop, config$p_missing)
 
     post_strategy <- calculate_post_strategy(
-      sia_pop_unpro, scope, prov_pop,p_missing = config$p_missing
+      sia_pop_unpro, scope, prov_pop, config$p_missing
     )
 
     # 7. Save per-country intermediate + final outputs
