@@ -1,21 +1,33 @@
-# gid-od-reduced-campaign
+# Estimate vulnerable children after campaigns in ideal and reduced scope
 
-This project aims to estimate the additional number of AFP cases caused by poliomyelitis with a reduced scope of target population of vaccine campaigns planned in November to December, 2026 in Nigeria, Ethiopia, Lake Chad Basin, Niger, and DRC, through estimating the direct effects of vaccine in preventing AFP cases. 
+This project aims to estimate the additional number of vulnerable children to poliomyelitis with a reduced scope of target population of vaccine campaigns planned in November to December, 2026 in Nigeria, Ethiopia, Central African Republic and Chad.  
 
 ## Methods
+### Unprotected children before strategies
 
 $$
-C_{obs} = C_{counterfactual} \times (1- VE \times v)
+U_{pre} = \sum_{a=0}^{4} b_a \times P(SIA < 3) 
 $$
 
-This method assumes that vaccine only protects vaccinees from progressing to paralytic cases, not considering reduction in transmission. 
+$$
+P(SIA) ~ Binomial(n, n_{total_{SIA}}, cov)
+$$
 
-1. Infer the $C_{counterfactual}$. 
-- Get VE estimates from literature. 
-- Get vaccine coverage time series from WUNEIC for IPV and POLIS for SIAs. 
-- Get AFP case time series from POLIS. 
-- Aggregate the vaccine coverage data and the case data into the same time scale (month for now) by province. 
-- Estimate the number of counterfactual cases in the absence of vaccination by province. 
+$U_{pre}$: the unprotected children before strategies per district
+$b_a$: birth cohort at age a in 2026
+$P(SIA)$: the probability of getting $n$ round of SIAs given there are $n_{total_{SIA}} rounds done since the birth cohort was born, with each round has certain coverage $cov$
+Then this number is aggregated across age and districts to get the number of unprotected children per province $U_{prov}$. 
 
-2. Estimate the additional AFP cases given reduced coverage of campaign. 
-- Use the estimated counterfactual cases to calculate the number of AFP cases expected given varied vaccine coverage. 
+### Unprotected children and symptomatic cases after strategies
+
+The number of protected children from the strategies is calculated as: 
+
+$$
+V= cov \times cov \times TP \times \frac{TP}{pop_{prov}} 
+$$
+
+$cov$: the coverage per SIA round
+$TP$: the target population in strategies either ideal or reduced scope
+$pop_{prov}$: the population for each province
+This assumes that the unprotected children are homogeneously distributed across the province, and two SIA rounds will apply proportionally to the fraction of target population among the total population of the province. 
+The number of unprotected children after strategies are simply $U_{post}= U_{pre}- V$.
