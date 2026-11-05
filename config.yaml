@@ -1,10 +1,10 @@
 
 countries:
-  - "NIGERIA"
-  - "ETHIOPIA"
-  # - "CHAD"
+  # - "NIGERIA"
+  # - "ETHIOPIA"
+  - "CHAD"
   # - "NIGER"
-  # - "CENTRAL AFRICAN REPUBLIC"
+  - "CENTRAL AFRICAN REPUBLIC"
 
 date_start: "2021-11-01"
 date_end:   "2026-11-01"
@@ -18,6 +18,8 @@ birthyears: ["2022", "2023", "2024", "2025", "2026"]
 crs: 
   NIGERIA: 32632
   ETHIOPIA: 32637
+  CHAD: 32633
+  CENTRAL AFRICAN REPUBLIC: 32634
 
 
 sia_filters:
@@ -40,10 +42,21 @@ admin1_name_fixes:
   "OROMIIA": "OROMIA"
   "OROMIYA": "OROMIA"
   "SOUTH WEST ETHIOPIA": "SOUTHWEST ETHIOPIA"
+  "REGION 1": "RS1"
+  "REGION 2": "RS2"
+  "REGION 3": "RS3"
+  "REGION 4": "RS4"
+  "REGION 5": "RS5"
+  "REGION 6": "RS6"
+  "REGION 7": "RS7"
+  "DAR SILA": "SILA"
 
 admin2_name_fixes:
   "MAYO BELWA": "MAYO-BELWA"
   "TAFAWA BALEWA": "TAFAWA-BALEWA"
   "DANGE SHUNI": "DANGE-SHUNI"
   "WAG HAMRA": "WAGHIMERA"
+  "BANGUI I": "BANGUI 1"
+  "BANGUI II": "BANGUI 2"
+  "BANGUI III": "BANGUI 3"
 
