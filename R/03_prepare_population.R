@@ -17,6 +17,33 @@ prepare_district_population <- function(dist_pop_raw, country, birthyears, admin
     dplyr::filter(place.admin.0 == country, year %in% birthyears) %>%
     dplyr::mutate(birth_pop = u5pop / 5) %>%
     dplyr::select(place.admin.0, place.admin.1, place.admin.2, year, birth_pop)
+
+    
+    # ## When processing data for a new country, several checks are needed ##
+    # dist_pop_raw %>%
+    # dplyr::rename(place.admin.0 = ctry, place.admin.1 = prov, place.admin.2 = dist) %>%
+    # dplyr::mutate(year = as.character(year)) %>%
+    # dplyr::select(place.admin.0, place.admin.1, place.admin.2, year, u5pop) %>%
+    # dplyr::filter(place.admin.0 == country, year %in% birthyears) %>%
+    # dplyr::mutate(birth_pop = u5pop / 5) %>%
+    # dplyr::select(place.admin.0, place.admin.1, place.admin.2, year, birth_pop) -> dist_pop
+ 
+    # ### check if the district names have renamed per province ###
+    # dist_pop %>%
+    #   group_by(place.admin.1) %>%
+    #   distinct(place.admin.2) -> t
+
+
+    # ### check if the province names are consistent across years (n_unique should be the number of years) ###
+    # dist_pop %>%
+    #   group_by(place.admin.1) %>%
+    #   summarise(n_unique = n_distinct(year)) -> t
+
+    # ### check if the district names are consistent across years (n_unique should be the number of years) ###
+    # dist_pop %>%
+    #   group_by(place.admin.1, place.admin.2) %>%
+    #   summarise(n_unique = n_distinct(year)) -> t
+
 }
 
 #' Interpolate district population onto the target-year map, then
