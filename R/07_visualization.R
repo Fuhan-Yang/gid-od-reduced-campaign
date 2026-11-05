@@ -35,8 +35,8 @@ make_barplot <- function(data,
                         names_to = "Vulnerable\nbefore campaigns", values_to = "number") %>%
     ggplot() +
     geom_col(aes(x = place.admin.1, y = number, fill = `Vulnerable\nbefore campaigns`), position = "stack") +
-    scale_y_continuous(breaks = round(seq(0, ymax * 1.1, length.out = 8)),
-                       labels = round(seq(0, ymax * 1.1, length.out = 8)/1e5)) +
+    scale_y_continuous(breaks = round(seq(0, ymax * 1.1, length.out = 8), 1),
+                       labels = round(seq(0, ymax * 1.1, length.out = 8)/1e5, 1)) +
     xlab("State") +
     ylab("Number of children vulnerable (\u00d7 100,000)") +
     # labs(caption = "CDC Internal Analysis | Pre-decisional Draft") +
@@ -51,8 +51,8 @@ make_barplot <- function(data,
     mutate(difference = unprotected_reduced_post - unprotected_ideal_post) %>%
     ggplot() +
     geom_col(aes(x = place.admin.1, y = difference)) +
-    scale_y_continuous(breaks = round(seq(0, ymax * 1.1, length.out = 8)),
-                      labels = round(seq(0, ymax * 1.1, length.out = 8)/1e5)) +
+    scale_y_continuous(breaks = round(seq(0, ymax * 1.1, length.out = 8), 1),
+                       labels = round(seq(0, ymax * 1.1, length.out = 8)/1e5, 1)) +
     # facet_wrap(place.admin.0 ~ ., nrow = 2, scales = "free") +
     xlab("State") +
     ylab("Number of children that remain vulnerable after campaigns (\u00d7 100,000)") +
@@ -84,7 +84,9 @@ make_table <- function(data, out_dir, country) {
     select(place.admin.0, all_unprotected_prov_pre, all_0_dose_prov_pre,
           all_other_dose_prov_pre,
           unprotected_ideal_post, protected_ideal_post, unprotected_reduced_post,
-          protected_reduced_post)
+          protected_reduced_post) %>%
+    mutate(across(where(is.numeric), \(x) round(x, 0)))
+
   
   flextable(country_df) %>%
   set_header_labels(
